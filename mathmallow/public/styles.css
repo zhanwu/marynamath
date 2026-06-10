@@ -1,0 +1,154 @@
+:root {
+  --bg: #fff5f9;
+  --card: #ffffff;
+  --ink: #3b3b5c;
+  --pink: #ff8fb1;
+  --pink-dark: #ff6f9c;
+  --blue: #5b8def;
+  --green: #57c785;
+  --muted: #9a9ab5;
+  --radius: 22px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Comic Sans MS", "Comic Sans", "Baloo 2", system-ui, -apple-system, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+.mm-header {
+  text-align: center;
+  padding: 14px 10px 6px;
+}
+.mm-header h1 { margin: 0; font-size: 1.9rem; }
+
+.mm-screen {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 12px 16px 60px;
+}
+
+.mm-cheer { text-align: center; font-size: 1.5rem; margin: 12px 0 18px; }
+.mm-muted { color: var(--muted); text-align: center; }
+
+/* ---- Home ---- */
+.mm-set-list { display: flex; flex-direction: column; gap: 14px; }
+.mm-set-card {
+  background: var(--card);
+  border: 3px solid var(--pink);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  cursor: pointer;
+  box-shadow: 0 4px 0 rgba(255,143,177,0.25);
+  transition: transform .08s ease;
+  text-align: left;
+  width: 100%;
+  font: inherit;
+  color: inherit;
+}
+.mm-set-card:active { transform: translateY(2px); }
+.mm-set-title { font-size: 1.3rem; font-weight: bold; }
+.mm-set-sub { color: var(--muted); margin-top: 4px; font-size: 1rem; }
+.mm-set-done { color: var(--green); font-weight: bold; }
+
+/* ---- Quiz ---- */
+.mm-quiz-top {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; margin-bottom: 10px;
+}
+.mm-link {
+  background: none; border: none; color: var(--blue);
+  font: inherit; font-size: 1rem; cursor: pointer; padding: 6px;
+}
+.mm-progress { font-weight: bold; font-size: 1.05rem; }
+.mm-timer {
+  background: var(--blue); color: #fff; border-radius: 999px;
+  padding: 4px 12px; font-weight: bold;
+}
+.mm-timer.mm-low { background: var(--pink-dark); }
+
+.mm-card {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 22px 20px;
+  box-shadow: 0 6px 0 rgba(91,141,239,0.18);
+  text-align: center;
+  min-height: 200px;
+}
+.mm-prompt { font-size: 1.5rem; line-height: 1.4; margin-bottom: 16px; font-weight: bold; }
+
+.mm-visual-slot { display: flex; justify-content: center; margin: 6px auto 18px; }
+.mm-visual { width: 100%; display: flex; justify-content: center; }
+.mm-widget-svg { display: block; height: auto; }
+.mm-visual-img { max-width: 100%; height: auto; border-radius: 12px; }
+.mm-alt { color: var(--muted); font-style: italic; padding: 16px; }
+
+.mm-input-slot { margin: 8px 0; }
+
+/* numeric input */
+.mm-num-input {
+  font: inherit;
+  font-size: 2rem;
+  text-align: center;
+  width: 80%;
+  max-width: 280px;
+  padding: 14px;
+  border: 3px solid var(--blue);
+  border-radius: 16px;
+  outline: none;
+}
+
+/* choice + true/false buttons */
+.mm-choices { display: flex; flex-direction: column; gap: 12px; }
+.mm-choice, .mm-tf {
+  font: inherit; font-size: 1.4rem; padding: 16px;
+  border: 3px solid var(--pink); border-radius: 18px;
+  background: #fff; cursor: pointer; color: var(--ink);
+}
+.mm-choice.mm-selected, .mm-tf.mm-selected {
+  background: var(--pink); color: #fff; border-color: var(--pink-dark);
+}
+.mm-tf-row { display: flex; gap: 14px; justify-content: center; }
+.mm-tf { flex: 1; }
+
+.mm-hint-btn {
+  margin-top: 14px; font: inherit; font-size: 1rem;
+  background: #fff4cc; border: 2px solid #f3c24b; color: #8a6d1a;
+  padding: 8px 16px; border-radius: 999px; cursor: pointer;
+}
+.mm-hint-text {
+  margin-top: 12px; background: #fff9e6; border-radius: 12px;
+  padding: 12px; color: #8a6d1a;
+}
+
+.mm-nav { display: flex; gap: 12px; margin-top: 18px; }
+.mm-btn {
+  flex: 1; font: inherit; font-size: 1.2rem; padding: 14px;
+  border-radius: 18px; border: none; cursor: pointer; font-weight: bold;
+}
+.mm-btn-primary { background: var(--blue); color: #fff; }
+.mm-btn-ghost { background: #ececf6; color: var(--ink); }
+.mm-btn-go { background: var(--green); color: #fff; }
+.mm-btn:disabled { opacity: .4; cursor: default; }
+
+.mm-mascot { text-align: center; font-size: 2.6rem; margin-top: 18px; }
+
+/* ---- Done ---- */
+.mm-done-card {
+  background: var(--card); border-radius: var(--radius);
+  padding: 36px 24px; text-align: center;
+  box-shadow: 0 6px 0 rgba(87,199,133,0.2);
+}
+.mm-done-emoji { font-size: 4rem; }
+.mm-score { font-size: 1.6rem; font-weight: bold; color: var(--green); }
+
+/* accessibility helper */
+.mm-sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}

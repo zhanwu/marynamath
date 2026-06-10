@@ -1,0 +1,108 @@
+{
+  "schema_version": "1.0",
+  "question_types": ["numeric", "multiple_choice", "true_false"],
+  "render_kinds": ["none", "widget", "image", "svg"],
+  "widgets": [
+    {
+      "name": "analog-clock",
+      "description": "Analog clock face showing a given time.",
+      "params": {
+        "hour": { "type": "int", "min": 0, "max": 12, "required": true },
+        "minute": { "type": "int", "min": 0, "max": 59, "required": true },
+        "showMinuteTicks": { "type": "bool", "required": false }
+      },
+      "canInput": false
+    },
+    {
+      "name": "number-line",
+      "description": "A horizontal number line with tick marks, optional labels and a highlighted value.",
+      "params": {
+        "min": { "type": "number", "required": true },
+        "max": { "type": "number", "required": true },
+        "step": { "type": "number", "required": true },
+        "marks": { "type": "array", "required": false, "description": "[{value, label?}]" },
+        "highlight": { "type": "number", "required": false }
+      },
+      "canInput": false
+    },
+    {
+      "name": "fraction-bar",
+      "description": "A rectangular bar split into equal parts with some parts shaded.",
+      "params": {
+        "parts": { "type": "int", "min": 1, "required": true },
+        "shaded": { "type": "intOrArray", "required": true, "description": "count of shaded parts, or array of 0-based indices" }
+      },
+      "canInput": false
+    },
+    {
+      "name": "fraction-circle",
+      "description": "A circle split into equal pie slices with some slices shaded.",
+      "params": {
+        "parts": { "type": "int", "min": 1, "required": true },
+        "shaded": { "type": "intOrArray", "required": true, "description": "count of shaded slices, or array of 0-based indices" }
+      },
+      "canInput": false
+    },
+    {
+      "name": "array-dots",
+      "description": "A rectangular array of dots for multiplication (rows x cols).",
+      "params": {
+        "rows": { "type": "int", "min": 1, "required": true },
+        "cols": { "type": "int", "min": 1, "required": true }
+      },
+      "canInput": false
+    },
+    {
+      "name": "base-ten-blocks",
+      "description": "Base-ten place-value blocks: hundreds (flats), tens (rods), ones (units).",
+      "params": {
+        "hundreds": { "type": "int", "min": 0, "required": false },
+        "tens": { "type": "int", "min": 0, "required": false },
+        "ones": { "type": "int", "min": 0, "required": false }
+      },
+      "canInput": false
+    },
+    {
+      "name": "shape",
+      "description": "A named geometric shape with optional side/angle labels and rotation.",
+      "params": {
+        "name": { "type": "string", "required": true, "description": "triangle | square | rectangle | pentagon | hexagon | circle" },
+        "sides": { "type": "int", "min": 3, "required": false },
+        "sideLabels": { "type": "array", "required": false },
+        "angleLabels": { "type": "array", "required": false },
+        "rotation": { "type": "number", "required": false }
+      },
+      "canInput": false
+    },
+    {
+      "name": "bar-model",
+      "description": "Singapore-style bar model: one or more labeled bars sized by units, with an optional brace.",
+      "params": {
+        "bars": { "type": "array", "required": true, "description": "[{label, units, color?}]" },
+        "brace": { "type": "object", "required": false, "description": "{label, from?, to?}" }
+      },
+      "canInput": false
+    },
+    {
+      "name": "coordinate-grid",
+      "description": "A first-quadrant coordinate plane with plotted points.",
+      "params": {
+        "width": { "type": "int", "min": 1, "required": true },
+        "height": { "type": "int", "min": 1, "required": true },
+        "points": { "type": "array", "required": false, "description": "[{x, y, label?}]" },
+        "showGrid": { "type": "bool", "required": false }
+      },
+      "canInput": false
+    },
+    {
+      "name": "bar-chart",
+      "description": "A simple vertical bar chart for categorical data.",
+      "params": {
+        "categories": { "type": "array", "required": true, "description": "[{label, value}]" },
+        "yMax": { "type": "number", "required": true },
+        "yStep": { "type": "number", "required": true }
+      },
+      "canInput": false
+    }
+  ]
+}

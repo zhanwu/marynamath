@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Mathmallow 🍡</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍡</text></svg>" />
+</head>
+<body>
+  <header class="mm-header">
+    <h1>🍡 Mathmallow</h1>
+  </header>
+
+  <!-- Home screen -->
+  <main id="screen-home" class="mm-screen">
+    <h2 class="mm-cheer">Pick a set to start!</h2>
+    <div id="set-list" class="mm-set-list"></div>
+    <p id="home-empty" class="mm-muted" hidden>No exercise sets yet. Ask a grown-up to add one!</p>
+  </main>
+
+  <!-- Quiz screen -->
+  <main id="screen-quiz" class="mm-screen" hidden>
+    <div class="mm-quiz-top">
+      <button id="btn-home" class="mm-link">← Sets</button>
+      <div id="progress" class="mm-progress"></div>
+      <div id="timer" class="mm-timer" hidden></div>
+    </div>
+    <div class="mm-card">
+      <div id="q-prompt" class="mm-prompt"></div>
+      <div id="q-visual" class="mm-visual-slot"></div>
+      <div id="q-input" class="mm-input-slot"></div>
+      <button id="btn-hint" class="mm-hint-btn" hidden>💡 Hint</button>
+      <div id="hint-text" class="mm-hint-text" hidden></div>
+    </div>
+    <div class="mm-nav">
+      <button id="btn-back" class="mm-btn mm-btn-ghost">Back</button>
+      <button id="btn-next" class="mm-btn mm-btn-primary">Next</button>
+      <button id="btn-submit" class="mm-btn mm-btn-go" hidden>I'm done! 🎉</button>
+    </div>
+    <div id="mascot" class="mm-mascot">🐻</div>
+  </main>
+
+  <!-- Done screen -->
+  <main id="screen-done" class="mm-screen" hidden>
+    <div class="mm-done-card">
+      <div class="mm-done-emoji">🎉</div>
+      <h2 id="done-msg" class="mm-cheer"></h2>
+      <p id="done-score" class="mm-score"></p>
+      <button id="btn-home-2" class="mm-btn mm-btn-primary">Back to sets</button>
+    </div>
+  </main>
+
+  <script src="widgets/registry.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

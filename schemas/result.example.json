@@ -1,0 +1,16 @@
+{
+  "set_id": "2026-06-08-addition-subtraction-regrouping",
+  "student": "<STUDENT>",
+  "started_at": "2026-06-08T15:01:22Z",
+  "submitted_at": "2026-06-08T15:14:05Z",
+  "duration_seconds": 763,
+  "answers": [
+    { "id": "q1", "student_answer": "71",  "correct": true,  "time_spent_seconds": 22, "attempts": 1 },
+    { "id": "q2", "student_answer": "47",  "correct": false, "time_spent_seconds": 65, "attempts": 2 },
+    { "id": "q3", "student_answer": "47",  "correct": true,  "time_spent_seconds": 18, "attempts": 1 },
+    { "id": "q4", "student_answer": "true","correct": true,  "time_spent_seconds": 9,  "attempts": 1 },
+    { "id": "q5", "student_answer": "63",  "correct": true,  "time_spent_seconds": 88, "attempts": 1 },
+    { "id": "q6", "student_answer": "3:30", "correct": true, "time_spent_seconds": 27, "attempts": 1 }
+  ],
+  "score": { "raw": 6, "max": 7, "percent": 86, "pending": 0 }
+}

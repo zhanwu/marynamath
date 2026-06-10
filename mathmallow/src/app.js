@@ -1,0 +1,257 @@
+'use strict';
+
+const express = require('express');
+const fs = require('fs');
+const path = require('path');
+
+const { openDb } = require('./db');
+const { loadAllSets, loadSetById, stripAnswers } = require('./sets');
+const { gradeSet } = require('./grading');
+
+const REPO_ROOT = path.resolve(__dirname, '..', '..');
+const APP_ROOT = path.resolve(__dirname, '..');
+
+function resolveDirs(opts = {}) {
+  const exerciseSetsDir =
+    opts.exerciseSetsDir ||
+    process.env.EXERCISE_SETS_DIR ||
+    path.join(REPO_ROOT, 'shared', 'exercise_sets');
+  const resultsDir =
+    opts.resultsDir ||
+    process.env.RESULTS_DIR ||
+    path.join(REPO_ROOT, 'shared', 'results');
+  const dbPath = opts.dbPath || path.join(APP_ROOT, 'db', 'mathmallow.db');
+  return { exerciseSetsDir, resultsDir, dbPath };
+}
+
+function nowIso() {
+  return new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+}
+
+/**
+ * Build the Express app. Returns { app, db, dirs, close }.
+ * Does NOT listen — server.js (or a test) calls app.listen().
+ */
+function createApp(opts = {}) {
+  const dirs = resolveDirs(opts);
+  fs.mkdirSync(dirs.resultsDir, { recursive: true });
+
+  const db = openDb(dirs.dbPath);
+  const app = express();
+  app.use(express.json({ limit: '1mb' }));
+
+  // Read capability manifest from disk once.
+  const capabilitiesPath = path.join(APP_ROOT, 'capabilities.json');
+  const readCapabilities = () =>
+    JSON.parse(fs.readFileSync(capabilitiesPath, 'utf8'));
+
+  // ---- Prepared statements --------------------------------------------------
+  const stmt = {
+    insertSession: db.prepare(
+      `INSERT INTO sessions (set_id, student, started_at, created_ms)
+       VALUES (?, ?, ?, ?)`
+    ),
+    openSessionForSet: db.prepare(
+      `SELECT * FROM sessions WHERE set_id = ? AND submitted_at IS NULL
+       ORDER BY created_ms DESC LIMIT 1`
+    ),
+    sessionById: db.prepare(`SELECT * FROM sessions WHERE id = ?`),
+    answersForSession: db.prepare(
+      `SELECT * FROM answers WHERE session_id = ?`
+    ),
+    upsertAnswer: db.prepare(
+      `INSERT INTO answers (session_id, question_id, student_answer, time_spent_seconds, attempts, updated_ms)
+       VALUES (@session_id, @question_id, @student_answer, @time_spent_seconds, 1, @updated_ms)
+       ON CONFLICT(session_id, question_id) DO UPDATE SET
+         student_answer = excluded.student_answer,
+         time_spent_seconds = excluded.time_spent_seconds,
+         attempts = answers.attempts + 1,
+         updated_ms = excluded.updated_ms`
+    ),
+    markSubmitted: db.prepare(
+      `UPDATE sessions SET submitted_at = ? WHERE id = ?`
+    ),
+  };
+
+  function decodeAnswer(rawJson) {
+    if (rawJson === null || rawJson === undefined) return null;
+    try {
+      return JSON.parse(rawJson);
+    } catch {
+      return rawJson;
+    }
+  }
+
+  function storedAnswerMap(sessionId) {
+    const rows = stmt.answersForSession.all(sessionId);
+    const map = {};
+    for (const r of rows) {
+      map[r.question_id] = {
+        student_answer: decodeAnswer(r.student_answer),
+        time_spent_seconds: r.time_spent_seconds,
+        attempts: r.attempts,
+      };
+    }
+    return map;
+  }
+
+  // ---- Endpoints ------------------------------------------------------------
+
+  // GET /api/capabilities
+  app.get('/api/capabilities', (req, res) => {
+    try {
+      res.json(readCapabilities());
+    } catch (err) {
+      res.status(500).json({ error: `cannot read capabilities: ${err.message}` });
+    }
+  });
+
+  // GET /api/sets — list available sets, newest-first.
+  app.get('/api/sets', (req, res) => {
+    const sets = loadAllSets(dirs.exerciseSetsDir);
+    const list = sets
+      .map((s) => {
+        const resultPath = path.join(dirs.resultsDir, `${s.set_id}.result.json`);
+        return {
+          set_id: s.set_id,
+          title: s.title || s.set_id,
+          subject: s.subject || null,
+          question_count: Array.isArray(s.questions) ? s.questions.length : 0,
+          completed: fs.existsSync(resultPath),
+          created_at: s.created_at || null,
+          __mtimeMs: s.__mtimeMs || 0,
+        };
+      })
+      .sort((a, b) => {
+        // newest-first: prefer created_at, fall back to file mtime
+        const ca = a.created_at || '';
+        const cb = b.created_at || '';
+        if (ca !== cb) return cb.localeCompare(ca);
+        return b.__mtimeMs - a.__mtimeMs;
+      })
+      .map(({ __mtimeMs, ...rest }) => rest);
+    res.json({ sets: list });
+  });
+
+  // GET /api/sets/:setId — set with answers stripped, render specs intact.
+  app.get('/api/sets/:setId', (req, res) => {
+    const set = loadSetById(dirs.exerciseSetsDir, req.params.setId);
+    if (!set) return res.status(404).json({ error: 'set not found' });
+    const clean = stripAnswers(set);
+    delete clean.__file;
+    delete clean.__mtimeMs;
+    res.json(clean);
+  });
+
+  // POST /api/sessions — start or resume a session for a set.
+  app.post('/api/sessions', (req, res) => {
+    const setId = req.body && req.body.set_id;
+    if (!setId) return res.status(400).json({ error: 'set_id required' });
+    const set = loadSetById(dirs.exerciseSetsDir, setId);
+    if (!set) return res.status(404).json({ error: 'set not found' });
+
+    let session = stmt.openSessionForSet.get(setId);
+    let resumed = false;
+    if (session) {
+      resumed = true;
+    } else {
+      const startedAt = nowIso();
+      const info = stmt.insertSession.run(
+        setId,
+        set.student || null,
+        startedAt,
+        Date.now()
+      );
+      session = stmt.sessionById.get(info.lastInsertRowid);
+    }
+
+    const answers = storedAnswerMap(session.id);
+    res.json({
+      session_id: session.id,
+      set_id: setId,
+      started_at: session.started_at,
+      resumed,
+      answers, // map of question_id -> { student_answer, time_spent_seconds, attempts }
+    });
+  });
+
+  // POST /api/sessions/:id/answer — save one answer (autosave).
+  app.post('/api/sessions/:id/answer', (req, res) => {
+    const sessionId = Number(req.params.id);
+    const session = stmt.sessionById.get(sessionId);
+    if (!session) return res.status(404).json({ error: 'session not found' });
+    if (session.submitted_at)
+      return res.status(409).json({ error: 'session already submitted' });
+
+    const { question_id, student_answer, time_spent_seconds } = req.body || {};
+    if (!question_id) return res.status(400).json({ error: 'question_id required' });
+
+    stmt.upsertAnswer.run({
+      session_id: sessionId,
+      question_id,
+      student_answer:
+        student_answer === undefined ? null : JSON.stringify(student_answer),
+      time_spent_seconds: Math.max(0, Math.round(Number(time_spent_seconds) || 0)),
+      updated_ms: Date.now(),
+    });
+
+    const row = stmt.answersForSession.all(sessionId).find((r) => r.question_id === question_id);
+    res.json({ ok: true, attempts: row ? row.attempts : 1 });
+  });
+
+  // POST /api/sessions/:id/submit — finalize, grade, write result file.
+  app.post('/api/sessions/:id/submit', (req, res) => {
+    const sessionId = Number(req.params.id);
+    const session = stmt.sessionById.get(sessionId);
+    if (!session) return res.status(404).json({ error: 'session not found' });
+
+    const set = loadSetById(dirs.exerciseSetsDir, session.set_id);
+    if (!set) return res.status(404).json({ error: 'set not found for session' });
+
+    const stored = storedAnswerMap(sessionId);
+    const { answers, score } = gradeSet(set, stored);
+
+    const submittedAt = nowIso();
+    const startedMs = Date.parse(session.started_at);
+    const submittedMs = Date.parse(submittedAt);
+    const durationSeconds = Number.isFinite(startedMs)
+      ? Math.max(0, Math.round((submittedMs - startedMs) / 1000))
+      : 0;
+
+    const result = {
+      set_id: set.set_id,
+      student: set.student || session.student || null,
+      started_at: session.started_at,
+      submitted_at: submittedAt,
+      duration_seconds: durationSeconds,
+      answers,
+      score,
+    };
+
+    const resultPath = path.join(dirs.resultsDir, `${set.set_id}.result.json`);
+    const existed = fs.existsSync(resultPath);
+    fs.writeFileSync(resultPath, JSON.stringify(result, null, 2) + '\n', 'utf8');
+    if (existed) {
+      console.log(`[mathmallow] overwrote existing result ${resultPath} with latest run`);
+    } else {
+      console.log(`[mathmallow] wrote result ${resultPath}`);
+    }
+
+    if (!session.submitted_at) {
+      stmt.markSubmitted.run(submittedAt, sessionId);
+    }
+
+    res.json({ ok: true, score, result_file: `${set.set_id}.result.json` });
+  });
+
+  // ---- Static frontend ------------------------------------------------------
+  app.use(express.static(path.join(APP_ROOT, 'public')));
+
+  function close() {
+    try { db.close(); } catch { /* ignore */ }
+  }
+
+  return { app, db, dirs, close };
+}
+
+module.exports = { createApp, resolveDirs, REPO_ROOT, APP_ROOT };
