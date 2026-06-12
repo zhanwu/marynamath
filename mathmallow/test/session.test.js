@@ -83,6 +83,40 @@ test('full session: start -> answer all -> submit writes correct result file', a
   }
 });
 
+test('submit response + result endpoint power review mode (per-question correct, no answer key)', async () => {
+  const env = tmpEnv();
+  const srv = await boot(env);
+  try {
+    const start = await srv.j('/api/sessions', { method: 'POST', body: JSON.stringify({ set_id: EXAMPLE.set_id }) });
+    const sid = start.body.session_id;
+    for (const q of EXAMPLE.questions) {
+      await srv.j(`/api/sessions/${sid}/answer`, {
+        method: 'POST',
+        body: JSON.stringify({ question_id: q.id, student_answer: STUDENT_ANSWERS[q.id], time_spent_seconds: 10 }),
+      });
+    }
+    const sub = await srv.j(`/api/sessions/${sid}/submit`, { method: 'POST' });
+    // submit returns per-question correctness for the client's review screen
+    assert.ok(Array.isArray(sub.body.answers), 'submit returns answers[]');
+    assert.strictEqual(sub.body.answers.find((a) => a.id === 'q2').correct, false);
+    assert.strictEqual(sub.body.answers.find((a) => a.id === 'q6').correct, true);
+
+    // reopening a completed set fetches the stored result, read-only
+    const got = await srv.j(`/api/sets/${EXAMPLE.set_id}/result`);
+    assert.strictEqual(got.status, 200);
+    assert.strictEqual(got.body.answers.length, 6);
+    // result must NOT carry the answer key
+    const raw = JSON.stringify(got.body);
+    assert.ok(!/"answer"\s*:/.test(raw), 'result leaked an "answer" key');
+
+    const missing = await srv.j('/api/sets/nope/result');
+    assert.strictEqual(missing.status, 404);
+  } finally {
+    srv.stop();
+    fs.rmSync(env.tmp, { recursive: true, force: true });
+  }
+});
+
 test('resume returns saved answers for an in-progress session', async () => {
   const env = tmpEnv();
   const srv = await boot(env);

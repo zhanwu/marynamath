@@ -147,6 +147,33 @@ html, body {
 .mm-done-emoji { font-size: 4rem; }
 .mm-score { font-size: 1.6rem; font-weight: bold; color: var(--green); }
 
+/* ---- Review mode ---- */
+.mm-ro { cursor: default; }
+.mm-choice.mm-ro, .mm-tf.mm-ro { opacity: .9; }
+.mm-correct {
+  border-color: var(--green) !important;
+  background: #e9f9f0 !important; color: var(--ink) !important;
+}
+.mm-choice.mm-selected.mm-correct, .mm-tf.mm-selected.mm-correct {
+  background: var(--green) !important; color: #fff !important;
+}
+.mm-wrong {
+  border-color: var(--pink-dark) !important;
+  background: #ffe9f0 !important; color: var(--ink) !important;
+}
+.mm-choice.mm-selected.mm-wrong, .mm-tf.mm-selected.mm-wrong {
+  background: var(--pink-dark) !important; color: #fff !important;
+}
+.mm-verdict {
+  margin-top: 14px; font-size: 1.25rem; font-weight: bold;
+  padding: 8px 14px; border-radius: 999px; display: inline-block;
+}
+.mm-v-right { background: #e9f9f0; color: var(--green); }
+.mm-v-wrong { background: #ffe9f0; color: var(--pink-dark); }
+.mm-v-pending { background: #fff9e6; color: #8a6d1a; font-size: 1.05rem; }
+
+#btn-review { margin-bottom: 12px; }
+
 /* accessibility helper */
 .mm-sr-only {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;

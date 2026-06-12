@@ -24,7 +24,9 @@
   }
 
   // ---- State ----
-  let state = null; // { set, sessionId, answers:{qid:{value,time,attempts}}, idx, qStartTs, timerInt }
+  // { set, sessionId, mode:'quiz'|'review', answers:{qid:{value,time,attempts}},
+  //   correctById:{qid:true|false|null}, idx, qStartTs, timerInt, deadline, score }
+  let state = null;
 
   // ---- Home ----
   async function loadHome() {
@@ -45,13 +47,14 @@
       btn.className = 'mm-set-card';
       btn.innerHTML =
         `<div class="mm-set-title">${escapeHtml(s.title)} ${s.completed ? '<span class="mm-set-done">✅</span>' : ''}</div>` +
-        `<div class="mm-set-sub">${escapeHtml(s.subject || '')} · ${s.question_count} question${s.question_count === 1 ? '' : 's'}</div>`;
-      btn.onclick = () => startSet(s.set_id);
+        `<div class="mm-set-sub">${escapeHtml(s.subject || '')} · ${s.question_count} question${s.question_count === 1 ? '' : 's'}${s.completed ? ' · done — tap to review' : ''}</div>`;
+      // Completed set -> read-only review, not a new editable run.
+      btn.onclick = s.completed ? () => openReview(s.set_id) : () => startSet(s.set_id);
       list.appendChild(btn);
     }
   }
 
-  // ---- Start / resume ----
+  // ---- Start / resume (editable quiz) ----
   async function startSet(setId) {
     const set = await api('/api/sets/' + encodeURIComponent(setId));
     const session = await api('/api/sessions', {
@@ -66,7 +69,9 @@
     state = {
       set,
       sessionId: session.session_id,
+      mode: 'quiz',
       answers,
+      correctById: {},
       idx: 0,
       qStartTs: Date.now(),
       timerInt: null,
@@ -82,6 +87,41 @@
     } else {
       $('timer').hidden = true;
     }
+    show('quiz');
+    renderQuestion();
+  }
+
+  // ---- Review (read-only) ----
+  async function openReview(setId) {
+    let set, result;
+    try {
+      set = await api('/api/sets/' + encodeURIComponent(setId));
+      result = await api('/api/sets/' + encodeURIComponent(setId) + '/result');
+    } catch (e) {
+      // no result -> fall back to a normal run
+      return startSet(setId);
+    }
+    enterReview(set, result.answers || [], result.score || {});
+  }
+
+  function enterReview(set, answerRows, score) {
+    const answers = {};
+    const correctById = {};
+    for (const a of answerRows) {
+      answers[a.id] = { value: a.student_answer };
+      correctById[a.id] = a.correct;
+    }
+    state = {
+      set,
+      sessionId: null,
+      mode: 'review',
+      answers,
+      correctById,
+      idx: 0,
+      timerInt: null,
+      score,
+    };
+    $('timer').hidden = true;
     show('quiz');
     renderQuestion();
   }
@@ -108,8 +148,9 @@
 
   function renderQuestion() {
     const q = currentQ();
+    const isReview = state.mode === 'review';
     const total = state.set.questions.length;
-    $('progress').textContent = `Question ${state.idx + 1} of ${total}`;
+    $('progress').textContent = `${isReview ? 'Review · ' : ''}Question ${state.idx + 1} of ${total}`;
     $('q-prompt').textContent = q.prompt || '';
 
     // visual
@@ -117,17 +158,24 @@
     vslot.innerHTML = '';
     vslot.appendChild(window.renderRender(q.render));
 
-    // input
+    // input (editable) or read-only display + verdict (review)
     const islot = $('q-input');
     islot.innerHTML = '';
     const saved = state.answers[q.id] ? state.answers[q.id].value : null;
-    buildInput(islot, q, saved);
+    const verdict = $('q-verdict');
+    if (isReview) {
+      buildReview(islot, q, saved);
+      renderVerdict(verdict, state.correctById[q.id]);
+    } else {
+      verdict.hidden = true;
+      buildInput(islot, q, saved);
+    }
 
-    // hint
+    // hint (quiz only)
     const hintBtn = $('btn-hint');
     const hintText = $('hint-text');
     hintText.hidden = true;
-    if (q.hint) {
+    if (!isReview && q.hint) {
       hintBtn.hidden = false;
       hintBtn.onclick = () => {
         hintText.textContent = q.hint;
@@ -138,10 +186,20 @@
     }
 
     // nav
-    $('btn-back').disabled = state.idx === 0;
     const isLast = state.idx === total - 1;
+    $('btn-back').disabled = state.idx === 0;
     $('btn-next').hidden = isLast;
-    $('btn-submit').hidden = !isLast;
+    const submitBtn = $('btn-submit');
+    if (isReview) {
+      // last review screen -> a friendly way back; no submit.
+      submitBtn.hidden = !isLast;
+      submitBtn.textContent = 'Back to sets';
+      submitBtn.className = 'mm-btn mm-btn-primary';
+    } else {
+      submitBtn.hidden = !isLast;
+      submitBtn.textContent = "I'm done! 🎉";
+      submitBtn.className = 'mm-btn mm-btn-go';
+    }
 
     state.qStartTs = Date.now();
   }
@@ -157,6 +215,9 @@
       if (saved != null) inp.value = saved;
       slot.appendChild(inp);
       slot._getValue = () => inp.value.trim();
+      // Auto-focus so the keyboard is ready. Called synchronously inside the
+      // Next/Back tap (a user gesture) so iOS Safari/Chrome will raise the keyboard.
+      inp.focus();
     } else if (q.type === 'multiple_choice') {
       const wrap = document.createElement('div');
       wrap.className = 'mm-choices';
@@ -197,8 +258,49 @@
     }
   }
 
+  // Read-only render of the child's answer, marked right/wrong.
+  function buildReview(slot, q, saved) {
+    const correct = state.correctById[q.id];
+    const mark = (el) => {
+      if (correct === true) el.classList.add('mm-correct');
+      else if (correct === false) el.classList.add('mm-wrong');
+    };
+    if (q.type === 'multiple_choice' || q.type === 'true_false') {
+      const opts = q.type === 'true_false'
+        ? [['True', 'true'], ['False', 'false']]
+        : (q.choices || []).map((c) => [String(c), String(c)]);
+      const wrap = document.createElement('div');
+      wrap.className = q.type === 'true_false' ? 'mm-tf-row' : 'mm-choices';
+      opts.forEach(([label, val]) => {
+        const b = document.createElement('div');
+        b.className = (q.type === 'true_false' ? 'mm-tf' : 'mm-choice') + ' mm-ro';
+        b.textContent = label;
+        if (String(val) === String(saved)) { b.classList.add('mm-selected'); mark(b); }
+        wrap.appendChild(b);
+      });
+      slot.appendChild(wrap);
+    } else {
+      // numeric (or other): show the answer as read-only text
+      const box = document.createElement('div');
+      box.className = 'mm-num-input mm-ro';
+      box.textContent = (saved == null || saved === '') ? '—' : String(saved);
+      mark(box);
+      slot.appendChild(box);
+    }
+  }
+
+  function renderVerdict(el, correct) {
+    el.hidden = false;
+    el.classList.remove('mm-v-right', 'mm-v-wrong', 'mm-v-pending');
+    if (correct === true) { el.textContent = '✓ Right!'; el.classList.add('mm-v-right'); }
+    else if (correct === false) { el.textContent = '✗ Not quite'; el.classList.add('mm-v-wrong'); }
+    else { el.textContent = '⏳ Your teacher will check this one'; el.classList.add('mm-v-pending'); }
+  }
+
   // ---- Autosave current answer ----
-  async function saveCurrent() {
+  // Reads the value synchronously, then sends the POST without blocking (so callers
+  // can re-render in the same user-gesture tick -> keeps iOS keyboard focus working).
+  function saveCurrent() {
     const q = currentQ();
     const slot = $('q-input');
     const value = slot._getValue ? slot._getValue() : null;
@@ -207,38 +309,40 @@
     const elapsed = Math.round((Date.now() - state.qStartTs) / 1000);
     const totalTime = (prior.time || 0) + Math.max(0, elapsed);
     state.answers[q.id] = { value, time: totalTime, attempts: (prior.attempts || 0) + 1 };
-    try {
-      await api(`/api/sessions/${state.sessionId}/answer`, {
-        method: 'POST',
-        body: JSON.stringify({
-          question_id: q.id,
-          student_answer: value,
-          time_spent_seconds: totalTime,
-        }),
-      });
-    } catch (e) {
-      console.warn('autosave failed:', e.message);
-    }
+    api(`/api/sessions/${state.sessionId}/answer`, {
+      method: 'POST',
+      body: JSON.stringify({
+        question_id: q.id,
+        student_answer: value,
+        time_spent_seconds: totalTime,
+      }),
+    }).catch((e) => console.warn('autosave failed:', e.message));
   }
 
   // ---- Nav ----
-  async function goNext() {
-    await saveCurrent();
+  function goNext() {
+    if (state.mode !== 'review') saveCurrent();
     if (state.idx < state.set.questions.length - 1) {
       state.idx++;
       renderQuestion();
     }
   }
-  async function goBack() {
-    await saveCurrent();
+  function goBack() {
+    if (state.mode !== 'review') saveCurrent();
     if (state.idx > 0) {
       state.idx--;
       renderQuestion();
     }
   }
 
+  // btn-submit dispatches by mode: quiz -> submit; review -> back to sets.
+  function onSubmitBtn() {
+    if (state.mode === 'review') { loadHome(); return; }
+    submit();
+  }
+
   async function submit() {
-    await saveCurrent();
+    saveCurrent();
     if (state.timerInt) clearInterval(state.timerInt);
     let resp;
     try {
@@ -247,6 +351,9 @@
       alert('Could not submit: ' + e.message);
       return;
     }
+    // remember results so "See my answers" can open review without a refetch
+    state.score = resp.score;
+    state.reviewAnswers = resp.answers || [];
     showDone(resp.score);
   }
 
@@ -258,7 +365,6 @@
     if (score.max > 0) {
       line = `You got ${score.raw} out of ${score.max}!`;
     } else {
-      // everything is awaiting teacher grading
       line = `All done — your teacher will check your answers!`;
     }
     if (pending > 0 && score.max > 0) {
@@ -275,9 +381,15 @@
   // ---- Wire up ----
   $('btn-next').onclick = goNext;
   $('btn-back').onclick = goBack;
-  $('btn-submit').onclick = submit;
+  $('btn-submit').onclick = onSubmitBtn;
   $('btn-home').onclick = loadHome;
   $('btn-home-2').onclick = loadHome;
+  // From the done screen, review the just-finished set (read-only).
+  $('btn-review').onclick = () => {
+    const set = state && state.set;
+    if (!set) return loadHome();
+    enterReview(set, state.reviewAnswers || [], state.score || {});
+  };
 
   loadHome();
 })();

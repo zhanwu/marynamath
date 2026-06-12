@@ -241,7 +241,22 @@ function createApp(opts = {}) {
       stmt.markSubmitted.run(submittedAt, sessionId);
     }
 
-    res.json({ ok: true, score, result_file: `${set.set_id}.result.json` });
+    // `answers` carries per-question `correct` so the client can show review mode.
+    // (No answer key here — only the student's answer + correctness.)
+    res.json({ ok: true, score, answers, result_file: `${set.set_id}.result.json` });
+  });
+
+  // GET /api/sets/:setId/result — the stored result (for reopening a completed set
+  // in read-only review mode). Contains student answers + per-question correctness,
+  // never the answer key.
+  app.get('/api/sets/:setId/result', (req, res) => {
+    const p = path.join(dirs.resultsDir, `${req.params.setId}.result.json`);
+    if (!fs.existsSync(p)) return res.status(404).json({ error: 'no result yet' });
+    try {
+      res.json(JSON.parse(fs.readFileSync(p, 'utf8')));
+    } catch (err) {
+      res.status(500).json({ error: `cannot read result: ${err.message}` });
+    }
   });
 
   // ---- Static frontend ------------------------------------------------------
