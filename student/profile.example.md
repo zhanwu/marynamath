@@ -1,9 +1,12 @@
 # Student Profile
 
-- **Name:** Wukong
-- **Age:** 7
-- **Presumed grade band:** 2 (CCSS-M) — *not yet assessed; confirm with a diagnostic.*
-- **Start date:** 2026-06-08
+> Template. Copy to `student/profile.md` and fill in — the real profile is gitignored
+> (personal data stays on your machine; this repo is shareable).
+
+- **Name:** <STUDENT>
+- **Age:** <AGE>
+- **Presumed grade band:** <K–5> (CCSS-M) — *not yet assessed; confirm with a diagnostic.*
+- **Start date:** <YYYY-MM-DD>
 - **Parent:** (the user)
 - **Teacher:** Maryna (the agent)
 

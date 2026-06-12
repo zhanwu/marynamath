@@ -23,7 +23,8 @@ Job, 3 parts:
 No direct delivery. Write sets to shared folder; **Mathmallow** (separate local app) shows
 them + writes results back. Contract §6.
 
-**Student:** set name in `student/profile.md` (`<STUDENT>` placeholder till filled).
+**Student:** set name in `student/profile.md` (create from `student/profile.example.md`;
+the real profile is gitignored — personal data stays local).
 
 ---
 

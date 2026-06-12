@@ -25,5 +25,9 @@ Maryna ◀─result─ shared/results/      ◀──
 
 ## Run
 
-1. App: `cd mathmallow && npm install && npm start` -> open printed LAN URL on kid's device (same Wi-Fi).
-2. Maryna: load `AGENT.md` as system prompt. Ask for level or a set. Sets -> `shared/exercise_sets/` -> show up in app.
+1. Profile: `cp student/profile.example.md student/profile.md`, fill in your kid.
+2. App: `cd mathmallow && npm install && npm start` -> open printed LAN URL on kid's device (same Wi-Fi).
+3. Maryna: load `AGENT.md` as system prompt. Ask for level or a set. Sets -> `shared/exercise_sets/` -> show up in app.
+
+**Privacy:** this repo is a shareable template. Your student's data — profile, sets,
+results, evaluations, summaries — is gitignored and never leaves your machine.

@@ -1,1 +1,14 @@
 issues/
+
+# Personal/student data — this repo is a template other families can adopt.
+# Real sets, results, evaluations, and the student's profile/summaries stay
+# local-only; just the .gitkeep placeholders (and schemas/ examples) are tracked.
+shared/exercise_sets/*
+shared/results/*
+shared/evaluations/*
+student/subject-summaries/*
+!shared/exercise_sets/.gitkeep
+!shared/results/.gitkeep
+!shared/evaluations/.gitkeep
+!student/subject-summaries/.gitkeep
+student/profile.md
