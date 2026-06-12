@@ -14,6 +14,11 @@ function validateSet(obj) {
   if (!obj || typeof obj !== 'object') return { ok: false, error: 'not an object' };
   if (typeof obj.set_id !== 'string' || obj.set_id.trim() === '')
     return { ok: false, error: 'missing set_id' };
+  // Issue 005: the AGENT.md template placeholder must never ship in a real set —
+  // `student` is baked into every long-term record. Reject so the agent learns
+  // immediately (the set won't appear in the app).
+  if (obj.student === '<STUDENT>')
+    return { ok: false, error: 'student is the "<STUDENT>" placeholder — fill in the real name from student/profile.md' };
   if (!Array.isArray(obj.questions))
     return { ok: false, error: 'questions is not an array' };
   if (obj.questions.length === 0)

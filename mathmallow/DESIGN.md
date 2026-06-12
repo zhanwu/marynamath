@@ -97,14 +97,19 @@ it by re-reading the manifest. **The widget catalog is the app's concern, not th
 
 ## API
 
-- `GET /api/sets` — list available sets (with `completed` flag).
+- `GET /api/sets` — list available sets (with `completed` + `wip` flags).
 - `GET /api/sets/:id` — one set, **answers stripped**, `render` specs intact.
 - `GET /api/capabilities` — the manifest.
 - `POST /api/sessions` — start or **resume** a run; returns saved answers.
 - `POST /api/sessions/:id/answer` — autosave one answer (persisted immediately; enables
-  resume); increments `attempts`.
+  resume); bumps `attempts` when the value changes.
 - `POST /api/sessions/:id/submit` — grade, write the result file, return the score.
 - `GET /` — the static frontend.
+
+**Session ownership:** the open session for a set belongs to one `client_id` (a stable
+per-browser id). While it's active, another browser gets 409 instead of silently sharing
+the session; once stale (no saves for `SESSION_STALE_MINUTES`, default 5), the session may
+be taken over — and the ousted browser's next write is rejected. No last-write-wins clobber.
 
 ## Frontend
 

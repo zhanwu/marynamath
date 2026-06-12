@@ -18,9 +18,35 @@
     if (!res.ok) {
       let msg = res.statusText;
       try { msg = (await res.json()).error || msg; } catch {}
-      throw new Error(msg);
+      const err = new Error(msg);
+      err.status = res.status;
+      throw err;
     }
     return res.json();
+  }
+
+  // Stable per-browser identity so the server can tell two devices apart
+  // (issue 003: one active session per set; a second browser must not clobber it).
+  function clientId() {
+    try {
+      let id = localStorage.getItem('mm-client-id');
+      if (!id) {
+        id = 'c-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+        localStorage.setItem('mm-client-id', id);
+      }
+      return id;
+    } catch {
+      // localStorage unavailable -> per-page-load identity (still better than none)
+      if (!window.__mmClientId) window.__mmClientId = 'c-' + Math.random().toString(36).slice(2, 10);
+      return window.__mmClientId;
+    }
+  }
+
+  // The session here was taken over by another device -> stop editing, go home.
+  function handleTakenOver() {
+    if (state && state.timerInt) clearInterval(state.timerInt);
+    alert('This set is being worked on from another device, so this screen is closing. 🍡');
+    loadHome();
   }
 
   // ---- State ----
@@ -45,9 +71,11 @@
     for (const s of sets) {
       const btn = document.createElement('button');
       btn.className = 'mm-set-card';
+      const badge = s.completed ? '<span class="mm-set-done">✅</span>' : (s.wip ? '<span class="mm-set-done">⏳</span>' : '');
+      const subNote = s.completed ? ' · done — tap to review' : (s.wip ? ' · in progress' : '');
       btn.innerHTML =
-        `<div class="mm-set-title">${escapeHtml(s.title)} ${s.completed ? '<span class="mm-set-done">✅</span>' : ''}</div>` +
-        `<div class="mm-set-sub">${escapeHtml(s.subject || '')} · ${s.question_count} question${s.question_count === 1 ? '' : 's'}${s.completed ? ' · done — tap to review' : ''}</div>`;
+        `<div class="mm-set-title">${escapeHtml(s.title)} ${badge}</div>` +
+        `<div class="mm-set-sub">${escapeHtml(s.subject || '')} · ${s.question_count} question${s.question_count === 1 ? '' : 's'}${subNote}</div>`;
       // Completed set -> read-only review, not a new editable run.
       btn.onclick = s.completed ? () => openReview(s.set_id) : () => startSet(s.set_id);
       list.appendChild(btn);
@@ -57,10 +85,19 @@
   // ---- Start / resume (editable quiz) ----
   async function startSet(setId) {
     const set = await api('/api/sets/' + encodeURIComponent(setId));
-    const session = await api('/api/sessions', {
-      method: 'POST',
-      body: JSON.stringify({ set_id: setId }),
-    });
+    let session;
+    try {
+      session = await api('/api/sessions', {
+        method: 'POST',
+        body: JSON.stringify({ set_id: setId, client_id: clientId() }),
+      });
+    } catch (e) {
+      if (e.status === 409) {
+        alert('Someone is doing this set on another device right now. 🍡 Try again in a few minutes!');
+        return;
+      }
+      throw e;
+    }
     const answers = {};
     for (const qid in (session.answers || {})) {
       const a = session.answers[qid];
@@ -308,15 +345,21 @@
     const prior = state.answers[q.id] || { time: 0, attempts: 0 };
     const elapsed = Math.round((Date.now() - state.qStartTs) / 1000);
     const totalTime = (prior.time || 0) + Math.max(0, elapsed);
-    state.answers[q.id] = { value, time: totalTime, attempts: (prior.attempts || 0) + 1 };
+    // attempts counts answer CHANGES, not visits (issue 004) — server enforces the same.
+    const changed = String(prior.value) !== String(value);
+    state.answers[q.id] = { value, time: totalTime, attempts: (prior.attempts || 0) + (changed ? 1 : 0) };
     api(`/api/sessions/${state.sessionId}/answer`, {
       method: 'POST',
       body: JSON.stringify({
         question_id: q.id,
         student_answer: value,
         time_spent_seconds: totalTime,
+        client_id: clientId(),
       }),
-    }).catch((e) => console.warn('autosave failed:', e.message));
+    }).catch((e) => {
+      if (e.status === 409 && state && state.mode === 'quiz') return handleTakenOver();
+      console.warn('autosave failed:', e.message);
+    });
   }
 
   // ---- Nav ----
@@ -346,8 +389,12 @@
     if (state.timerInt) clearInterval(state.timerInt);
     let resp;
     try {
-      resp = await api(`/api/sessions/${state.sessionId}/submit`, { method: 'POST' });
+      resp = await api(`/api/sessions/${state.sessionId}/submit`, {
+        method: 'POST',
+        body: JSON.stringify({ client_id: clientId() }),
+      });
     } catch (e) {
+      if (e.status === 409) return handleTakenOver();
       alert('Could not submit: ' + e.message);
       return;
     }

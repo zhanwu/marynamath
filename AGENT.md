@@ -73,7 +73,7 @@ Two axes:
    - Depth/reasoning -> Beast Academy puzzles, bar models.
    - New concept -> CPA, scaffolded.
 4. **Size for attention span:** 8–15 Qs practice, 10–15 diagnostic. Mix types.
-5. **Write** to `shared/exercise_sets/<set-id>.json` per §6 schema. Tag every Q: `skill_tag`, `difficulty` (1–5), `points`.
+5. **Write** to `shared/exercise_sets/<set-id>.json` per §6 schema. Tag every Q: `skill_tag`, `difficulty` (1–5), `points`. `student` = real name from `student/profile.md` — never the `<STUDENT>` placeholder (Mathmallow rejects it).
 6. **Tell parent:** set ready, focus, what testing.
 
 Prompts age-appropriate, encouraging, unambiguous. Kid contexts (animals, snacks, games) in

@@ -32,8 +32,16 @@ function nowIso() {
  * Build the Express app. Returns { app, db, dirs, close }.
  * Does NOT listen — server.js (or a test) calls app.listen().
  */
+// A session with no activity for this long is "stale": another browser may
+// take it over (issue 003). Activity = session start/claim + every answer save.
+const DEFAULT_STALE_MS = 5 * 60 * 1000;
+
 function createApp(opts = {}) {
   const dirs = resolveDirs(opts);
+  const staleMs =
+    opts.staleMs ||
+    (Number(process.env.SESSION_STALE_MINUTES) || 0) * 60 * 1000 ||
+    DEFAULT_STALE_MS;
   fs.mkdirSync(dirs.resultsDir, { recursive: true });
 
   const db = openDb(dirs.dbPath);
@@ -48,8 +56,8 @@ function createApp(opts = {}) {
   // ---- Prepared statements --------------------------------------------------
   const stmt = {
     insertSession: db.prepare(
-      `INSERT INTO sessions (set_id, student, started_at, created_ms)
-       VALUES (?, ?, ?, ?)`
+      `INSERT INTO sessions (set_id, student, started_at, created_ms, client_id, last_activity_ms)
+       VALUES (?, ?, ?, ?, ?, ?)`
     ),
     openSessionForSet: db.prepare(
       `SELECT * FROM sessions WHERE set_id = ? AND submitted_at IS NULL
@@ -60,18 +68,47 @@ function createApp(opts = {}) {
       `SELECT * FROM answers WHERE session_id = ?`
     ),
     upsertAnswer: db.prepare(
+      // attempts counts ANSWER CHANGES, not visits (issue 004): re-saving the same
+      // value (e.g. paging Back/Next past an answered question) must not bump it,
+      // or "many attempts = shaky mastery" becomes navigation noise for the agent.
+      // Time still accumulates on every save. `IS NOT` is NULL-safe.
       `INSERT INTO answers (session_id, question_id, student_answer, time_spent_seconds, attempts, updated_ms)
        VALUES (@session_id, @question_id, @student_answer, @time_spent_seconds, 1, @updated_ms)
        ON CONFLICT(session_id, question_id) DO UPDATE SET
+         attempts = answers.attempts +
+           (CASE WHEN excluded.student_answer IS NOT answers.student_answer THEN 1 ELSE 0 END),
          student_answer = excluded.student_answer,
          time_spent_seconds = excluded.time_spent_seconds,
-         attempts = answers.attempts + 1,
          updated_ms = excluded.updated_ms`
     ),
     markSubmitted: db.prepare(
       `UPDATE sessions SET submitted_at = ? WHERE id = ?`
     ),
+    claimSession: db.prepare(
+      `UPDATE sessions SET client_id = ?, last_activity_ms = ? WHERE id = ?`
+    ),
+    touchSession: db.prepare(
+      `UPDATE sessions SET last_activity_ms = ? WHERE id = ?`
+    ),
   };
+
+  // ---- Session ownership (issue 003) ----------------------------------------
+  // A browser identifies itself with a client_id. The open session for a set is
+  // owned by one client; another client may only take it over once it is stale.
+  const isActive = (session) =>
+    Date.now() - (session.last_activity_ms || 0) < staleMs;
+  // Legacy sessions (client_id null, pre-003 rows) are claimable by anyone.
+  const ownedBy = (session, clientId) =>
+    session.client_id == null || session.client_id === clientId;
+  /** 409s the response and returns true if `clientId` does not own `session`. */
+  function rejectForeign(res, session, clientId) {
+    if (ownedBy(session, clientId)) return false;
+    res.status(409).json({
+      error: 'this set is being worked on from another device',
+      taken_over: true,
+    });
+    return true;
+  }
 
   function decodeAnswer(rawJson) {
     if (rawJson === null || rawJson === undefined) return null;
@@ -112,12 +149,14 @@ function createApp(opts = {}) {
     const list = sets
       .map((s) => {
         const resultPath = path.join(dirs.resultsDir, `${s.set_id}.result.json`);
+        const open = stmt.openSessionForSet.get(s.set_id);
         return {
           set_id: s.set_id,
           title: s.title || s.set_id,
           subject: s.subject || null,
           question_count: Array.isArray(s.questions) ? s.questions.length : 0,
           completed: fs.existsSync(resultPath),
+          wip: Boolean(open && isActive(open)), // someone is working it right now
           created_at: s.created_at || null,
           __mtimeMs: s.__mtimeMs || 0,
         };
@@ -144,15 +183,30 @@ function createApp(opts = {}) {
   });
 
   // POST /api/sessions — start or resume a session for a set.
+  // Ownership (issue 003): an active session belongs to one client_id; a second
+  // browser gets 409 until the session is stale, then may take it over.
   app.post('/api/sessions', (req, res) => {
     const setId = req.body && req.body.set_id;
+    const clientId = (req.body && req.body.client_id) || null;
     if (!setId) return res.status(400).json({ error: 'set_id required' });
     const set = loadSetById(dirs.exerciseSetsDir, setId);
     if (!set) return res.status(404).json({ error: 'set not found' });
 
     let session = stmt.openSessionForSet.get(setId);
     let resumed = false;
+    let tookOver = false;
     if (session) {
+      if (!ownedBy(session, clientId)) {
+        if (isActive(session)) {
+          return res.status(409).json({
+            error: 'this set is being worked on from another device right now',
+            wip: true,
+          });
+        }
+        tookOver = true; // stale -> reclaim; old browser will 409 on its next save
+      }
+      stmt.claimSession.run(clientId, Date.now(), session.id);
+      session = stmt.sessionById.get(session.id);
       resumed = true;
     } else {
       const startedAt = nowIso();
@@ -160,6 +214,8 @@ function createApp(opts = {}) {
         setId,
         set.student || null,
         startedAt,
+        Date.now(),
+        clientId,
         Date.now()
       );
       session = stmt.sessionById.get(info.lastInsertRowid);
@@ -171,6 +227,7 @@ function createApp(opts = {}) {
       set_id: setId,
       started_at: session.started_at,
       resumed,
+      took_over: tookOver,
       answers, // map of question_id -> { student_answer, time_spent_seconds, attempts }
     });
   });
@@ -182,10 +239,12 @@ function createApp(opts = {}) {
     if (!session) return res.status(404).json({ error: 'session not found' });
     if (session.submitted_at)
       return res.status(409).json({ error: 'session already submitted' });
+    if (rejectForeign(res, session, (req.body && req.body.client_id) || null)) return;
 
     const { question_id, student_answer, time_spent_seconds } = req.body || {};
     if (!question_id) return res.status(400).json({ error: 'question_id required' });
 
+    stmt.touchSession.run(Date.now(), sessionId);
     stmt.upsertAnswer.run({
       session_id: sessionId,
       question_id,
@@ -204,6 +263,7 @@ function createApp(opts = {}) {
     const sessionId = Number(req.params.id);
     const session = stmt.sessionById.get(sessionId);
     if (!session) return res.status(404).json({ error: 'session not found' });
+    if (rejectForeign(res, session, (req.body && req.body.client_id) || null)) return;
 
     const set = loadSetById(dirs.exerciseSetsDir, session.set_id);
     if (!set) return res.status(404).json({ error: 'set not found for session' });

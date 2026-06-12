@@ -95,12 +95,22 @@ honest.
 
 | method + path | purpose |
 |---|---|
-| `GET /api/sets` | list available sets (newest-first) with completed flag |
+| `GET /api/sets` | list available sets (newest-first) with `completed` + `wip` flags |
 | `GET /api/sets/:setId` | a set with answers stripped, render specs intact |
 | `GET /api/capabilities` | the capability manifest |
-| `POST /api/sessions` | start or resume a run for a set; returns `session_id` + saved answers |
-| `POST /api/sessions/:id/answer` | autosave one answer `{question_id, student_answer, time_spent_seconds}` |
-| `POST /api/sessions/:id/submit` | grade, write the result file, return the score |
+| `POST /api/sessions` | start or resume a run for a set (`{set_id, client_id}`); returns `session_id` + saved answers |
+| `POST /api/sessions/:id/answer` | autosave one answer `{question_id, student_answer, time_spent_seconds, client_id}` |
+| `POST /api/sessions/:id/submit` | grade, write the result file, return the score (`{client_id}`) |
+
+### One active session per set
+
+A set's open session is owned by one browser (a `client_id` the frontend keeps in
+localStorage). A second device opening the same set gets a friendly "in progress on
+another device" message (HTTP 409) instead of silently sharing — and clobbering — the
+first device's answers. A session with no activity for 5 minutes (configurable via
+`SESSION_STALE_MINUTES`) is *stale*: the second device may then take it over, saved
+answers included, and the original device is locked out on its next save. The home
+list marks live sets with ⏳ (`wip`).
 
 ## Tests
 

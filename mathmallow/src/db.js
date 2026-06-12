@@ -14,12 +14,14 @@ function openDb(dbPath) {
   db.pragma('journal_mode = WAL');
   db.exec(`
     CREATE TABLE IF NOT EXISTS sessions (
-      id            INTEGER PRIMARY KEY AUTOINCREMENT,
-      set_id        TEXT NOT NULL,
-      student       TEXT,
-      started_at    TEXT NOT NULL,
-      submitted_at  TEXT,
-      created_ms    INTEGER NOT NULL
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      set_id           TEXT NOT NULL,
+      student          TEXT,
+      started_at       TEXT NOT NULL,
+      submitted_at     TEXT,
+      created_ms       INTEGER NOT NULL,
+      client_id        TEXT,              -- which browser owns this session (issue 003)
+      last_activity_ms INTEGER            -- last save/claim; stale sessions are reclaimable
     );
     CREATE TABLE IF NOT EXISTS answers (
       session_id          INTEGER NOT NULL,
@@ -31,6 +33,10 @@ function openDb(dbPath) {
       PRIMARY KEY (session_id, question_id)
     );
   `);
+  // Migrate pre-003 databases: add the session-ownership columns if missing.
+  const cols = db.prepare(`PRAGMA table_info(sessions)`).all().map((c) => c.name);
+  if (!cols.includes('client_id')) db.exec(`ALTER TABLE sessions ADD COLUMN client_id TEXT`);
+  if (!cols.includes('last_activity_ms')) db.exec(`ALTER TABLE sessions ADD COLUMN last_activity_ms INTEGER`);
   return db;
 }
 

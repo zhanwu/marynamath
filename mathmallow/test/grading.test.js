@@ -109,6 +109,19 @@ test('a set containing a legacy "text" question is rejected (not served)', () =>
   assert.match(v.error, /invalid type text/);
 });
 
+test('a set with the <STUDENT> placeholder is rejected (issue 005)', () => {
+  // `student` is baked into every long-term record (set + result). The AGENT.md
+  // template placeholder must never ship; rejecting here means the set won't
+  // appear in the app and the agent learns immediately.
+  const v = validateSet({
+    set_id: 'placeholder-set',
+    student: '<STUDENT>',
+    questions: [{ id: 'q1', type: 'numeric', answer: 1 }],
+  });
+  assert.strictEqual(v.ok, false);
+  assert.match(v.error, /<STUDENT>/);
+});
+
 test('ungradable structured widget value is pending: excluded from max, not wrong', () => {
   // A `null` correct can still arise from a structured interactive-input widget
   // value the server cannot auto-grade (no structured answer to compare against).
