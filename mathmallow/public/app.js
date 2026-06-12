@@ -16,10 +16,11 @@
   async function api(path, opts) {
     const res = await fetch(path, Object.assign({ headers: { 'Content-Type': 'application/json' } }, opts));
     if (!res.ok) {
-      let msg = res.statusText;
-      try { msg = (await res.json()).error || msg; } catch {}
+      let msg = res.statusText, body = null;
+      try { body = await res.json(); msg = body.error || msg; } catch {}
       const err = new Error(msg);
       err.status = res.status;
+      err.body = body; // e.g. { taken_over: true } — lets callers tell 409 reasons apart
       throw err;
     }
     return res.json();
@@ -45,9 +46,13 @@
   // The session here was taken over by another device -> stop editing, go home.
   function handleTakenOver() {
     if (state && state.timerInt) clearInterval(state.timerInt);
+    state = null; // dead session — in-flight flows (e.g. submit) check this and bail
     alert('This set is being worked on from another device, so this screen is closing. 🍡');
     loadHome();
   }
+  // True only for the ownership 409 (server sets taken_over) — NOT for other
+  // 409s like "session already submitted", which must not show the takeover alert.
+  const isTakenOver = (e) => e.status === 409 && e.body && e.body.taken_over;
 
   // ---- State ----
   // { set, sessionId, mode:'quiz'|'review', answers:{qid:{value,time,attempts}},
@@ -246,10 +251,18 @@
       const inp = document.createElement('input');
       inp.className = 'mm-num-input';
       inp.type = 'text';
-      inp.inputMode = 'numeric';
-      inp.setAttribute('inputmode', 'numeric');
+      // 'decimal' (not 'numeric'): iOS numeric keypad has no '.' key, which
+      // locks out decimal answers like 3.5.
+      inp.setAttribute('inputmode', 'decimal');
       inp.placeholder = '?';
       if (saved != null) inp.value = saved;
+      // Enter = Next (or submit on the last question) — kid types and hits return.
+      inp.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        if (state.idx === state.set.questions.length - 1) onSubmitBtn();
+        else goNext();
+      });
       slot.appendChild(inp);
       slot._getValue = () => inp.value.trim();
       // Auto-focus so the keyboard is ready. Called synchronously inside the
@@ -337,18 +350,25 @@
   // ---- Autosave current answer ----
   // Reads the value synchronously, then sends the POST without blocking (so callers
   // can re-render in the same user-gesture tick -> keeps iOS keyboard focus working).
+  // Returns the save's promise (never rejects) so submit() can await it.
   function saveCurrent() {
     const q = currentQ();
     const slot = $('q-input');
     const value = slot._getValue ? slot._getValue() : null;
-    if (value == null || value === '') return; // nothing to save
-    const prior = state.answers[q.id] || { time: 0, attempts: 0 };
-    const elapsed = Math.round((Date.now() - state.qStartTs) / 1000);
-    const totalTime = (prior.time || 0) + Math.max(0, elapsed);
+    const prior = state.answers[q.id] || { value: null, time: 0, attempts: 0 };
+    const elapsed = Math.max(0, Math.round((Date.now() - state.qStartTs) / 1000));
+    const totalTime = (prior.time || 0) + elapsed;
+    if (value == null || value === '') {
+      // Nothing to save yet — but keep the time. Staring at a question and moving
+      // on must still count toward time_spent once an answer is eventually given,
+      // or the agent reads "answered in 3s" for a question pondered for minutes.
+      state.answers[q.id] = Object.assign({}, prior, { time: totalTime });
+      return;
+    }
     // attempts counts answer CHANGES, not visits (issue 004) — server enforces the same.
     const changed = String(prior.value) !== String(value);
     state.answers[q.id] = { value, time: totalTime, attempts: (prior.attempts || 0) + (changed ? 1 : 0) };
-    api(`/api/sessions/${state.sessionId}/answer`, {
+    return api(`/api/sessions/${state.sessionId}/answer`, {
       method: 'POST',
       body: JSON.stringify({
         question_id: q.id,
@@ -357,7 +377,7 @@
         client_id: clientId(),
       }),
     }).catch((e) => {
-      if (e.status === 409 && state && state.mode === 'quiz') return handleTakenOver();
+      if (isTakenOver(e) && state && state.mode === 'quiz') return handleTakenOver();
       console.warn('autosave failed:', e.message);
     });
   }
@@ -385,8 +405,12 @@
   }
 
   async function submit() {
-    saveCurrent();
-    if (state.timerInt) clearInterval(state.timerInt);
+    if (state.timerInt) clearInterval(state.timerInt); // stop first: no re-fire mid-await
+    // Await the last answer's autosave before grading — otherwise the server can
+    // grade the set before the final answer lands (and the late save then hits
+    // "already submitted" and is silently lost).
+    await saveCurrent();
+    if (!state || state.mode !== 'quiz') return; // taken over while saving
     let resp;
     try {
       resp = await api(`/api/sessions/${state.sessionId}/submit`, {
@@ -394,7 +418,7 @@
         body: JSON.stringify({ client_id: clientId() }),
       });
     } catch (e) {
-      if (e.status === 409) return handleTakenOver();
+      if (isTakenOver(e)) return handleTakenOver();
       alert('Could not submit: ' + e.message);
       return;
     }

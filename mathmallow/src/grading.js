@@ -4,7 +4,8 @@
  * Pure auto-grading logic for Mathmallow.
  *
  * Each grader takes (question, studentAnswer) and returns true | false | null.
- * - numeric: |student - answer| <= answer_tolerance (lenient about whitespace and leading '+')
+ * - numeric: |student - answer| <= answer_tolerance (lenient about whitespace,
+ *   leading '+', and thousands commas like "1,234")
  * - multiple_choice: selected choice string === answer exactly
  * - true_false: boolean comparison
  * - interactive input widget value (object): deep-equal against structured answer, else null
@@ -21,6 +22,9 @@ function parseNumeric(raw) {
   if (s === '') return NaN;
   // allow a single leading '+'
   if (s.startsWith('+')) s = s.slice(1).trim();
+  // allow US thousands separators, but only in valid positions ("1,234" yes,
+  // "1,2" no — that's not a thousands pattern, don't guess what it meant)
+  if (/^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(s)) s = s.replace(/,/g, '');
   // Number() handles ints, decimals, and rejects trailing junk (returns NaN)
   const n = Number(s);
   return n;

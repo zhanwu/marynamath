@@ -44,6 +44,16 @@ test('parseNumeric rejects trailing junk', () => {
   assert.strictEqual(parseNumeric('  +12 '), 12);
 });
 
+test('numeric grading accepts thousands commas (valid positions only)', () => {
+  const tq = { type: 'numeric', answer: 1234, answer_tolerance: 0 };
+  assert.strictEqual(gradeQuestion(tq, '1,234'), true);
+  assert.strictEqual(parseNumeric('12,345,678'), 12345678);
+  assert.strictEqual(parseNumeric('-1,234.5'), -1234.5);
+  // misplaced commas are NOT silently fixed up — don't guess what "1,2" meant
+  assert.ok(Number.isNaN(parseNumeric('1,2')));
+  assert.ok(Number.isNaN(parseNumeric('12,34')));
+});
+
 test('multiple_choice grading by exact string', () => {
   assert.strictEqual(gradeQuestion(q('q3'), '47'), true);
   assert.strictEqual(gradeQuestion(q('q3'), '63'), false);
